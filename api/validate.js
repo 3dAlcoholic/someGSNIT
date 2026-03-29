@@ -9,7 +9,7 @@ export default function handler(req, res) {
 
   // TEMP example "valid" wallet
   if (wallet === "0x123") {
-    const token = jwt.sign({ wallet }, process.env.SECRET || "dev-secret");
+    const token = jwt.sign({ wallet }, process.env.SECRET);
 
     return res.status(200).json({
       valid: true,
