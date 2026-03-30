@@ -10,7 +10,7 @@ const CONTRACT_ABI = [
 ];
 
 // Load private key (SERVER ONLY)
-const privateKey = process.env.PRIVATE_KEY;
+const privateKey = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
 
 export default async function handler(req, res) {
   try {
