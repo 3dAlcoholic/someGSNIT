@@ -33,17 +33,14 @@ export default async function handler(req, res) {
 
     const provider = new ethers.JsonRpcProvider(process.env.ALCHEMY_URL);
 
-    // 👇 ETH balance (unchanged)
     const ethBalance = await provider.getBalance(wallet);
 
-    // 👇 Contract instance
     const contract = new ethers.Contract(
       CONTRACT_ADDRESS,
       CONTRACT_ABI,
       provider
     );
 
-    // 👇 LICENSE CHECK (SECURITY)
     const [
       shareAmount,
       isValid,
@@ -51,48 +48,74 @@ export default async function handler(req, res) {
       expiry,
       licensed,
       isLifetime,
-      daysRemaining
+      daysRemaining,
+      hrs,
+      mins,
+      secs
     ] = await contract.balanceOf(wallet);
 
-    // 🔒 Validation logic
-    if (!licensed || !isValid) {
-      return res.status(403).json({ error: "Not licensed or invalid" });
+    // 🔒 FULL VALIDATION LOGIC
+    const now = Math.floor(Date.now() / 1000);
+
+    const valid =
+      licensed &&
+      isValid &&
+      (isLifetime || Number(expiry) > now);
+
+    if (!valid) {
+      return res.status(403).json({
+        valid: false,
+        error: "License invalid, expired, or not licensed",
+        license: {
+          shareAmount: shareAmount.toString(),
+          isValid,
+          plan: Number(plan),
+          expiry: expiry.toString(),
+          licensed,
+          isLifetime,
+          daysRemaining: daysRemaining.toString(),
+          hrs: hrs.toString(),
+          mins: mins.toString(),
+          secs: secs.toString()
+        }
+      });
     }
 
-    if (!isLifetime) {
-      const now = Math.floor(Date.now() / 1000);
-      if (Number(expiry) < now) {
-        return res.status(403).json({ error: "License expired" });
-      }
-    }
-
-    // ✅ JWT only issued if valid
     const token = jwt.sign(
       {
         wallet,
         plan: Number(plan),
-        licensed: true,
+        licensed: true
       },
       process.env.SECRET
     );
 
     return res.status(200).json({
+      valid: true,
       wallet,
       balance: ethers.formatEther(ethBalance),
+
       license: {
         shareAmount: shareAmount.toString(),
+        isValid,
         plan: Number(plan),
         expiry: expiry.toString(),
+        licensed,
         isLifetime,
         daysRemaining: daysRemaining.toString(),
+        hrs: hrs.toString(),
+        mins: mins.toString(),
+        secs: secs.toString()
       },
-      token,
+
+      token
     });
 
   } catch (err) {
     console.error("ERROR:", err);
     return res.status(500).json({
       error: err.message || "Unknown error",
+      valid: false
     });
   }
 }
