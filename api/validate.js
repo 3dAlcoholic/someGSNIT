@@ -1,5 +1,5 @@
-import { ethers } from "ethers";
-import jwt from "jsonwebtoken";
+const { ethers } = require("ethers");
+const jwt = require("jsonwebtoken");
 
 export default async function handler(req, res) {
   try {
