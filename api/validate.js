@@ -1,6 +1,5 @@
 const { ethers } = require("ethers");
 const jwt = require("jsonwebtoken");
-const crypto = require("crypto");
 const fs = require("fs");
 
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
@@ -14,56 +13,57 @@ const privateKey = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
 
 export default async function handler(req, res) {
   try {
-    console.log("➡️ Incoming request");
+    console.log("➡️ [START] Incoming request");
 
     if (req.method !== "POST") {
-      console.log("❌ Wrong method:", req.method);
+      console.log("❌ [METHOD] Invalid:", req.method);
       return res.status(405).json({ error: "Method not allowed" });
     }
 
     const { wallet } = req.body || {};
-    console.log("➡️ Wallet received:", wallet);
+    console.log("➡️ [INPUT] Wallet:", wallet);
 
     if (!wallet) {
-      console.log("❌ Missing wallet");
+      console.log("❌ [INPUT] Missing wallet");
       return res.status(400).json({ error: "Missing wallet" });
     }
 
-    console.log("➡️ ENV CHECK:");
+    // ENV CHECK
+    console.log("➡️ [ENV CHECK]");
     console.log("PRIVATE_KEY:", !!process.env.PRIVATE_KEY);
     console.log("SECRET:", !!process.env.SECRET);
     console.log("ALCHEMY_URL:", !!process.env.ALCHEMY_URL);
     console.log("CONTRACT_ADDRESS:", !!process.env.CONTRACT_ADDRESS);
 
     if (!process.env.ALCHEMY_URL) {
-      console.log("❌ Missing ALCHEMY_URL");
       return res.status(500).json({ error: "Missing ALCHEMY_URL" });
     }
 
     if (!process.env.SECRET) {
-      console.log("❌ Missing SECRET");
       return res.status(500).json({ error: "Missing SECRET" });
     }
 
     if (!process.env.CONTRACT_ADDRESS) {
-      console.log("❌ Missing CONTRACT_ADDRESS");
       return res.status(500).json({ error: "Missing CONTRACT_ADDRESS" });
     }
 
-    console.log("➡️ Creating provider...");
+    // PROVIDER
+    console.log("➡️ [PROVIDER] Connecting...");
     const provider = new ethers.JsonRpcProvider(process.env.ALCHEMY_URL);
 
-    console.log("➡️ Fetching ETH balance...");
+    // BALANCE
+    console.log("➡️ [BALANCE] Fetching ETH...");
     const ethBalance = await provider.getBalance(wallet);
 
-    console.log("➡️ Connecting to contract...");
+    // CONTRACT
+    console.log("➡️ [CONTRACT] Loading...");
     const contract = new ethers.Contract(
       CONTRACT_ADDRESS,
       CONTRACT_ABI,
       provider
     );
 
-    console.log("➡️ Calling contract.balanceOf...");
+    console.log("➡️ [CONTRACT] Calling balanceOf...");
     const [
       shareAmount,
       isValid,
@@ -77,7 +77,7 @@ export default async function handler(req, res) {
       secs
     ] = await contract.balanceOf(wallet);
 
-    console.log("➡️ Contract response:", {
+    console.log("➡️ [CONTRACT RESULT]", {
       shareAmount: shareAmount.toString(),
       isValid,
       plan: Number(plan),
@@ -86,16 +86,16 @@ export default async function handler(req, res) {
       isLifetime
     });
 
-    // 🔒 FULL VALIDATION LOGIC
+    // VALIDATION
     const now = Math.floor(Date.now() / 1000);
-    console.log("➡️ Current timestamp:", now);
+    console.log("➡️ [TIME] Now:", now);
 
     const valid =
       licensed &&
       isValid &&
       (isLifetime || Number(expiry) > now);
 
-    console.log("➡️ License valid:", valid);
+    console.log("➡️ [VALIDATION] Result:", valid);
 
     const licenseData = {
       shareAmount: shareAmount.toString(),
@@ -110,28 +110,27 @@ export default async function handler(req, res) {
       secs: secs.toString()
     };
 
-    console.log("➡️ License data:", licenseData);
+    console.log("➡️ [LICENSE DATA]", licenseData);
 
-    // 🔐 SIGN THE LICENSE DATA
+    // SIGNING (FIXED)
+    console.log("➡️ [SIGN] Creating signature...");
+
     const payload = { license: licenseData };
+    const message = JSON.stringify(payload);
 
-    console.log("➡️ Signing payload...");
-    const signer = crypto.createSign("SHA256");
-    signer.update(JSON.stringify(payload));
-    signer.end();
+    const walletSigner = new ethers.Wallet(privateKey);
+    const signature = await walletSigner.signMessage(message);
 
-    const signature = signer.sign(privateKey, "base64");
+    console.log("➡️ [SIGN] Signature:", signature.slice(0, 30) + "...");
 
-    console.log("➡️ Signature created:", signature.slice(0, 30) + "...");
-
+    // INVALID PATH
     if (!valid) {
-      console.log("❌ License invalid path hit");
+      console.log("❌ [RESULT] License INVALID");
 
       return res.status(403).json({
         valid: false,
         error: "License invalid, expired, or not licensed",
         license: licenseData,
-
         signed: {
           data: payload,
           signature
@@ -139,7 +138,9 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log("➡️ Creating JWT...");
+    // JWT
+    console.log("➡️ [JWT] Creating token...");
+
     const token = jwt.sign(
       {
         wallet,
@@ -149,17 +150,14 @@ export default async function handler(req, res) {
       process.env.SECRET
     );
 
-    console.log("✅ Success — returning response");
+    console.log("✅ [SUCCESS] Returning response");
 
     return res.status(200).json({
       valid: true,
       wallet,
       balance: ethers.formatEther(ethBalance),
-
       license: licenseData,
-
       token,
-
       signed: {
         data: payload,
         signature
@@ -167,7 +165,7 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error("❌ ERROR:", err);
+    console.error("❌ [ERROR]", err);
 
     return res.status(500).json({
       error: err.message || "Unknown error",
