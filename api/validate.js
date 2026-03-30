@@ -1,11 +1,16 @@
 const { ethers } = require("ethers");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const fs = require("fs");
 
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
 
 const CONTRACT_ABI = [
   "function balanceOf(address shareholder) view returns (uint256 shareAmount, bool isValid, uint8 plan, uint256 expiry, bool licensed, bool isLifetime, uint256 daysRemaining, uint256 hrs, uint256 mins, uint256 secs)"
 ];
+
+// Load private key (SERVER ONLY)
+const privateKey = process.env.PRIVATE_KEY;
 
 export default async function handler(req, res) {
   try {
@@ -62,21 +67,38 @@ export default async function handler(req, res) {
       isValid &&
       (isLifetime || Number(expiry) > now);
 
+    const licenseData = {
+      shareAmount: shareAmount.toString(),
+      isValid,
+      plan: Number(plan),
+      expiry: expiry.toString(),
+      licensed,
+      isLifetime,
+      daysRemaining: daysRemaining.toString(),
+      hrs: hrs.toString(),
+      mins: mins.toString(),
+      secs: secs.toString()
+    };
+
+    // 🔐 SIGN THE LICENSE DATA
+    const payload = { license: licenseData };
+
+    const signer = crypto.createSign("SHA256");
+    signer.update(JSON.stringify(payload));
+    signer.end();
+
+    const signature = signer.sign(privateKey, "base64");
+
     if (!valid) {
       return res.status(403).json({
         valid: false,
         error: "License invalid, expired, or not licensed",
-        license: {
-          shareAmount: shareAmount.toString(),
-          isValid,
-          plan: Number(plan),
-          expiry: expiry.toString(),
-          licensed,
-          isLifetime,
-          daysRemaining: daysRemaining.toString(),
-          hrs: hrs.toString(),
-          mins: mins.toString(),
-          secs: secs.toString()
+        license: licenseData,
+
+        // 🔐 STILL RETURN SIGNATURE EVEN IF INVALID
+        signed: {
+          data: payload,
+          signature
         }
       });
     }
@@ -95,20 +117,15 @@ export default async function handler(req, res) {
       wallet,
       balance: ethers.formatEther(ethBalance),
 
-      license: {
-        shareAmount: shareAmount.toString(),
-        isValid,
-        plan: Number(plan),
-        expiry: expiry.toString(),
-        licensed,
-        isLifetime,
-        daysRemaining: daysRemaining.toString(),
-        hrs: hrs.toString(),
-        mins: mins.toString(),
-        secs: secs.toString()
-      },
+      license: licenseData,
 
-      token
+      token,
+
+      // 🔐 SIGNED RESPONSE (NEW)
+      signed: {
+        data: payload,
+        signature
+      }
     });
 
   } catch (err) {
