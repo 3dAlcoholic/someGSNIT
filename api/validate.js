@@ -20,15 +20,15 @@ export default async function handler(req, res) {
     }
 
     if (!process.env.ALCHEMY_URL) {
-      return res.status(500).json({ error: "Missing ALCHEMY_URL" });
+      return res.status(501).json({ error: "Missing ALCHEMY_URL" });
     }
 
     if (!process.env.SECRET) {
-      return res.status(500).json({ error: "Missing SECRET" });
+      return res.status(502).json({ error: "Missing SECRET" });
     }
 
     if (!process.env.CONTRACT_ADDRESS) {
-      return res.status(500).json({ error: "Missing CONTRACT_ADDRESS" });
+      return res.status(503).json({ error: "Missing CONTRACT_ADDRESS" });
     }
 
     const provider = new ethers.JsonRpcProvider(process.env.ALCHEMY_URL);
